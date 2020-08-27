@@ -10,4 +10,6 @@ Add training data by looking at a bar go back and forth. As it goes back and for
 The model is being trained (may take a while)
 ### Stage 4: Eye Tracking Stage
 Where you look will be predicted by the model
+# Regression Vs Classification
+Regression is much more accurate than dividing the screen into squares
 
