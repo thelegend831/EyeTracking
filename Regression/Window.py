@@ -2,8 +2,26 @@ import tkinter, time, os, shutil, pathlib, cv2, tensorflow, numpy, random
 from functools import partial
 import matplotlib.pyplot as plot
 
+'''
+Run this program to see the results of using regression and moving the cursor 
+along the screen 
+'''
+
 class Window():
     def __init__(self, clean_cols, clean_rows):
+        '''
+        Initialize all configuration variables here, which determine accuracy of model
+        and how fast the model is trained.
+        If you have a configured GPU for tensorflow, you can probably increase
+        the img height and width here. OpenCV and the program will handle the rest,
+        just don't go over the maximimum definition of your camera.
+        With 100x100, it can still interestingly change the location of the horizontal bar
+        with head swings.
+
+        Switch clean_cols or clean_rows to true if you want to remove the training data from
+        a previous run
+
+        '''
         self.window = tkinter.Tk()
         self.window.attributes('-zoomed', True)
         # Set up constants
@@ -12,9 +30,9 @@ class Window():
         self.num_cols = 100
         self.num_rows = 30
         self.BATCH_SIZE = 10
-        # 480 x 640
-        self.IMG_WIDTH = 480
-        self.IMG_HEIGHT = 640
+        # 480 x 640 is the maximum for my computer
+        self.IMG_WIDTH = 100
+        self.IMG_HEIGHT = 100
         # See if images need to be cleaned
         if clean_cols:
             self.clean_imgs('Columns')
@@ -38,6 +56,9 @@ class Window():
         self.main_frame.place(relx=0, rely=0, relwidth=1, relheight=1)
     
     def collect_data(self):
+        '''
+        Landing page for application here
+        '''
         self.build_main_frame()
         self.main_frame.config(bg='peach puff')
         # Column Data Info
@@ -61,6 +82,11 @@ class Window():
         train_btn.place(relx=0.5, rely=0.9, anchor='center')
 
     def collect_col_data(self):
+        '''
+        Moves bar accross column, and user looks at bar to collect data
+
+        DONT GIVE ANY BAD DATA
+        '''
         self.build_main_frame()
         # Take pictures for columns
         nc = self.num_cols
@@ -86,6 +112,9 @@ class Window():
         self.collect_data()
 
     def collect_row_data(self):
+        '''
+        Moves bar up and down for row data
+        '''
         self.build_main_frame()
         # Take pictures for rows
         nr = self.num_rows
@@ -111,6 +140,11 @@ class Window():
         self.collect_data()
     
     def take_picture(self, video, folder, index):
+        '''
+        Take picture and save it to the folder
+        folder: Either Columns or Rows
+        index:  Column / row number (b/c finite number of cols or rows for data collection)
+        '''
         num_pics = 0
         if folder == 'Columns':
             num_pics = self.col_dict[index]
@@ -229,74 +263,10 @@ class Window():
         track_btn.place(relx=0.5, rely=0.5, anchor='center')
         self.window.mainloop()
 
-
-
-    def train(self):
-        self.window.destroy()
-        nc = self.num_cols
-        # Count the total number of images before adding them
-        print('Counting Column Images...')
-        total_num_img = 0
-        for col in range(nc):
-            for path in pathlib.Path(f"Columns/index{col}").iterdir():
-                total_num_img += 1
-        # Create a list of size total images with the indices mixed up (no repeats)
-        random_indices = random.sample(range(total_num_img), total_num_img)
-        
-        # Load the images into memory
-        print('Loading Column Images...')
-        random_index = 0                                # Index in random index array
-        col_imgs = [-1 for num in range(total_num_img)] # Init array of column images
-        col_vals = [-1 for num in range(total_num_img)] # Init array of column values
-        for index in range(nc):
-            for path in pathlib.Path(f"Columns/index{index}").iterdir():
-                # Read new image from path
-                new_image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
-                # Resize the image to be previously specified size
-                new_image = cv2.resize(new_image, (self.IMG_WIDTH, self.IMG_HEIGHT))
-                # Add image and its index to arrays at random indices
-                col_imgs[random_indices[random_index]] = new_image
-                col_vals[random_indices[random_index]] = index
-                random_index += 1
-        # Turn into numpy arrays for model and rescale
-        X = numpy.array(col_imgs).reshape(-1, self.IMG_WIDTH, self.IMG_HEIGHT, 1)
-        X = X / 255                 # Max color value is 255
-        y = numpy.array(col_vals)   
-        y = y / (nc - 1)
-        # Build Model
-        print('Building Column Model...')
-        col_mod = tensorflow.keras.Sequential()
-        # Convolutional Layer 1
-        col_mod.add(tensorflow.keras.layers.Conv2D(30, (3, 3), input_shape=(self.IMG_WIDTH, self.IMG_HEIGHT, 1)))
-        col_mod.add(tensorflow.keras.layers.Activation('relu'))
-        col_mod.add(tensorflow.keras.layers.MaxPooling2D(pool_size=(2, 2)))
-        # Convolutional Layer 2
-        col_mod.add(tensorflow.keras.layers.Conv2D(30, (3, 3), input_shape=(self.IMG_WIDTH, self.IMG_HEIGHT, 1)))
-        col_mod.add(tensorflow.keras.layers.Activation('relu'))
-        col_mod.add(tensorflow.keras.layers.MaxPooling2D(pool_size=(2, 2)))
-        # Dense Layer 1
-        col_mod.add(tensorflow.keras.layers.Flatten())
-        col_mod.add(tensorflow.keras.layers.Dense(60))
-        col_mod.add(tensorflow.keras.layers.Activation('relu'))
-        # Regression Layer
-        col_mod.add(tensorflow.keras.layers.Dense(1))
-        col_mod.summary()
-        
-        col_mod.compile(loss='mse',
-                        optimizer='adam',
-                        metrics=['mse'])
-        # Train Model
-        print('Training Model...')
-        col_mod.fit(x=X, y=y, batch_size=1, epochs=10, validation_split=0.05)
-        self.col_mod = col_mod
-        print('Model Built!')
-        self.window = tkinter.Tk()
-        self.build_main_frame()
-        track_btn = tkinter.Button(self.main_frame, text='Start Tracking', command=partial(Window.track, self))
-        track_btn.place(relx=0.5, rely=0.5, anchor='center')
-        self.window.mainloop()
-
     def track(self):
+        '''
+        Tracking stage, applies model to current pictures of user
+        '''
         self.build_main_frame()
         video = cv2.VideoCapture(0)
         col_frame = tkinter.Frame(self.main_frame, bg='black')
@@ -317,8 +287,6 @@ class Window():
             print(prediction)
             col_frame.place(relx=prediction[0][0], rely=0, relheight=1, relwidth=1/self.num_cols)
             self.window.update()
-
-
 
     def clean_imgs(self, folder):
         '''
@@ -359,4 +327,4 @@ class Window():
         return num_pic_dict
 
     
-window = Window(False, False)
+window = Window(True, True)
